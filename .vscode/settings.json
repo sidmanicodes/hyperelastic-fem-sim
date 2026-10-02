@@ -1,0 +1,10 @@
+{
+  "cmake.cmakePath": "/opt/homebrew/bin/cmake",
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "files.watcherExclude": {
+    "**/build/**": true
+  },
+  "search.exclude": {
+    "**/build/**": true
+  }
+}

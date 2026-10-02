@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/build/_deps/eigen-src",
+                "${workspaceFolder}/build/_deps/polyscope-src/include"
+            ],
+            "compilerPath": "/usr/bin/clang++",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "browse": {
+                "path": ["${workspaceFolder}/src"],
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "defines": [],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "macos-clang-arm64"
+        }
+    ],
+    "version": 4
+}
