@@ -34,6 +34,11 @@ FetchContent_MakeAvailable(libigl)
 
 add_executable(hyperelastic-fem-sim
     src/main.cpp
+    src/Material.cpp
+)
+
+target_include_directories(hyperelastic-fem-sim
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 
 target_link_libraries(hyperelastic-fem-sim 

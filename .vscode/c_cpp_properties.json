@@ -4,6 +4,7 @@
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/src",
+                "${workspaceFolder}/include",
                 "${workspaceFolder}/build/_deps/eigen-src",
                 "${workspaceFolder}/build/_deps/polyscope-src/include"
             ],
