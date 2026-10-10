@@ -1,6 +1,21 @@
 {
   "cmake.cmakePath": "/opt/homebrew/bin/cmake",
   "cmake.buildDirectory": "${workspaceFolder}/build",
+  "cmake.configureSettings": {
+    "CMAKE_BUILD_TYPE": "Release"
+  },
+  "cmake.defaultVariants": {
+    "buildType": {
+      "default": "release",
+      "choices": {
+        "release": {
+          "short": "Release",
+          "long": "Optimized simulation build",
+          "buildType": "Release"
+        }
+      }
+    }
+  },
   "files.watcherExclude": {
     "**/build/**": true
   },
