@@ -3,13 +3,13 @@
 #include <stdexcept>
 
 FEMSim::NeoHookeanMaterial::NeoHookeanMaterial(
-    double E, double nu) 
+    const double E, const double nu) 
 {
     mu_ = E / (2 * (1 + nu));
     lambda_ = (E * nu) / ((1 + nu) * (1 - 2*nu));
 }
 
-double FEMSim::NeoHookeanMaterial::energyDensity(Eigen::Matrix3d& F) const{
+double FEMSim::NeoHookeanMaterial::energyDensity(const Eigen::Matrix3d& F) const{
     double J = F.determinant();
 
     if (J <= 0) {
@@ -25,7 +25,7 @@ double FEMSim::NeoHookeanMaterial::energyDensity(Eigen::Matrix3d& F) const{
         0.5 * (mu_ * (Ic - 3.0)) - (mu_ * logJ) + 0.5 * (lambda_ * logJ * logJ);
 }
 
-Eigen::Matrix3d FEMSim::NeoHookeanMaterial::firstPiolaStressTensor(Eigen::Matrix3d& F) {
+Eigen::Matrix3d FEMSim::NeoHookeanMaterial::firstPiolaStressTensor(const Eigen::Matrix3d& F) const {
     double J = F.determinant();
 
     if (J <= 0) {
