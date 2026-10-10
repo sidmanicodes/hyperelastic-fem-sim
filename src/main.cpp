@@ -6,6 +6,7 @@
 #include <polyscope/polyscope.h>
 #include <polyscope/volume_mesh.h>
 #include <igl/readMESH.h>
+#include "Material.hpp"
 
 double pi = M_PI;
 
@@ -77,31 +78,56 @@ int main() {
     // For now, spatial config is equal to material config
     Eigen::MatrixXd x = X;
 
+
+    // double ymin = X.col(1).minCoeff();
+    // double ymax = X.col(1).maxCoeff();
+
+    // for (int i = 0; i < x.rows(); ++i) {
+
+    //     double alpha =
+    //         (X(i, 1) - ymin) /
+    //         (ymax - ymin);
+
+    //     x(i, 0) += 0.5 * alpha * alpha;
+    // }
+
+    /*
+    Create a NeoHookean material with Young's modulus 1000 Pa
+    and Poisson ratio 0.3 (hyperelastic)
+    */
+    FEMSim::NeoHookeanMaterial material(1000.0, 0.3);
+
     double theta = pi/4;
     Eigen::Matrix3d rotateX;
     rotateX << 1.0, 0.0, 0.0,
                0.0, std::cos(theta), -std::sin(theta),
                0.0, std::sin(theta), std::cos(theta);
 
-    Eigen::Matrix3d shearTransform;
-    shearTransform <<   1.0, 1.5, 0.0,
-                        0.0, 1.5, 0.0,
-                        0.0, 1.5, 1.0;
+    // Eigen::Matrix3d shearTransform;
+    // shearTransform <<   1.0, 1.5, 0.0,
+    //                     0.0, 1.5, 0.0,
+    //                     0.0, 1.5, 1.0;
 
-    x = (X * rotateX.transpose());
-    x = (x * shearTransform.transpose());
+    // x = (X * rotateX.transpose());
+    // x = (x * shearTransform.transpose());
 
-    // Compute deformation gradient (since x = X rn, F should be the identity)
+    // Compute deformation gradients (since x = X rn, F should be the identity)
+    // Also compute the NeoHookean energies and the first Piola-Kirchoff stress tensors
     std::vector<double> J(T.rows());
+    std::vector<double> energy(T.rows());
+    std::vector<Eigen::Matrix3d> P(T.rows());
     for (int e = 0; e < T.rows(); ++e) {
         Eigen::Matrix3d Fe = computeDeformationGradient(e, x, T, DmInv);
         
         J[e] = Fe.determinant();
+        energy[e] = material.energyDensity(Fe);
+        P[e] = material.firstPiolaStressTensor(Fe);
     }
 
     // Register mesh in viewer
     auto* mesh = polyscope::registerTetMesh("mesh", x, T);
     mesh->addCellScalarQuantity("J = det(F)", J)->setEnabled(true);
+    mesh->addCellScalarQuantity("Strain energy density", energy)->setEnabled(true);
 
     // Display
     polyscope::show();
