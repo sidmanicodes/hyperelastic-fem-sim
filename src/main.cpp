@@ -14,6 +14,7 @@
 const double pi = M_PI;
 const double g = 9.81;
 const double eps = 1e-6;
+const double beta = 1e-3;
 const double restitution = 0.5;
 const double youngsModulus = 500.0;
 const double poissonRatio = 0.3;
@@ -63,7 +64,7 @@ void addElasticForce(
     const std::vector<double>& initialVols,
     const Eigen::Matrix3d F,
     const FEMSim::NeoHookeanMaterial& material,
-    const std::vector<Eigen::Matrix3d>& P,
+    const Eigen::Matrix3d& P,
     Eigen::MatrixXd& forces
 )
 {
@@ -78,10 +79,10 @@ void addElasticForce(
 
     double V = initialVols[e];
 
-    forces.row(i_0) += (-V * P[e] * gradN_e[0]).transpose();
-    forces.row(i_1) += (-V * P[e] * gradN_e[1]).transpose();
-    forces.row(i_2) += (-V * P[e] * gradN_e[2]).transpose();
-    forces.row(i_3) += (-V * P[e] * gradN_e[3]).transpose();
+    forces.row(i_0) += (-V * P * gradN_e[0]).transpose();
+    forces.row(i_1) += (-V * P * gradN_e[1]).transpose();
+    forces.row(i_2) += (-V * P * gradN_e[2]).transpose();
+    forces.row(i_3) += (-V * P * gradN_e[3]).transpose();
 }
 
 Eigen::Matrix3d computeDeformationGradient(
@@ -123,29 +124,46 @@ void step(
     const std::vector<Eigen::Matrix3d>& DmInv,
     const FEMSim::NeoHookeanMaterial& material,
     const std::vector<double>& initialVols,
-    Eigen::MatrixXd& forces,
+    Eigen::MatrixXd& netForces,
     std::vector<double>& J,
     std::vector<double>& energy,
     std::vector<Eigen::Matrix3d>& P
 ) 
 {
     // Recompute forces for each substep, retaining them for visualization.
-    forces.setZero();
+    netForces.setZero();
+    Eigen::MatrixXd elasticForce = Eigen::MatrixXd::Zero(x.rows(), 3);
+    
+    // Perturb the spatial vector; this will be used to approximate
+    // the Rayleigh damping
+    Eigen::MatrixXd xPerturbed = x + eps * v;
+    Eigen::MatrixXd elasticForcePerturbed = Eigen::MatrixXd::Zero(x.rows(), 3);
+
     for (int e = 0; e < T.rows(); ++e) {
         Eigen::Matrix3d Fe = computeDeformationGradient(e, x, T, DmInv);
+        Eigen::Matrix3d FePerturbed = computeDeformationGradient(e, xPerturbed, T, DmInv);
         J[e] = Fe.determinant();
         energy[e] = material.energyDensity(Fe);
         P[e] = material.firstPiolaStressTensor(Fe);
+        Eigen::Matrix3d P_Perturbed = material.firstPiolaStressTensor(FePerturbed);
         
-        addElasticForce(e, x, T, gradN, initialVols, Fe, material, P, forces);
+        // Compute elastic forces for the original spatial vector and the perturbed one
+        addElasticForce(e, x, T, gradN, initialVols, Fe, material, P[e], elasticForce);
+        addElasticForce(e, xPerturbed, T, gradN, initialVols, FePerturbed, material, P_Perturbed, elasticForcePerturbed);
     }
+
+    // Compute Rayleigh damping
+    Eigen::MatrixXd rayleighDamping = beta * ((elasticForcePerturbed - elasticForce) / eps);
+
+    // Sum up net forces
+    netForces += elasticForce + rayleighDamping;
 
     for (int i = 0; i < x.rows(); ++i) {
         // Add gravitational forces to each vertex
-        addGravityForce(i, mass, forces);
+        addGravityForce(i, mass, netForces);
 
         // Run Symplectic Euler
-        symplecticEuler(i, dt, x, X, v, forces, mass);
+        symplecticEuler(i, dt, x, X, v, netForces, mass);
     }
 }
 
