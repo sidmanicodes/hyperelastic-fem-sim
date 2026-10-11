@@ -14,8 +14,10 @@
 const double pi = M_PI;
 const double g = 9.81;
 const double eps = 1e-6;
-const double youngsModulus = 25.0;
+const double restitution = 0.5;
+const double youngsModulus = 500.0;
 const double poissonRatio = 0.3;
+const double height = 5.0;
 
 void addGravityForce(int i, Eigen::VectorXd& mass, Eigen::MatrixXd& forces) {
     Eigen::Vector3d gravity(0.0, mass(i) * -g, 0.0);
@@ -30,24 +32,26 @@ void symplecticEuler(
     Eigen::MatrixXd& X,
     Eigen::MatrixXd& v,
     Eigen::MatrixXd& forces,
-    Eigen::VectorXd& mass,
-    std::vector<bool>& fixed
+    Eigen::VectorXd& mass
 )
-{
-    // If the vertex is fixed, don't integrate
-    if (fixed[i]) {
-        v.row(i) = Eigen::Vector3d::Zero().transpose();
-        x.row(i) = X.row(i);
-    }
-    else {
-        // Compute acceleration of ith vertex
-        Eigen::Vector3d a = forces.row(i) / mass(i);
-    
-        // Update velocity
-        v.row(i) += dt * a;
-    
-        // Update position
-        x.row(i) += dt * v.row(i);
+{    
+    // Compute acceleration of ith vertex
+    Eigen::Vector3d a = forces.row(i) / mass(i);
+
+    // Update velocity
+    v.row(i) += dt * a;
+
+    // Update position
+    x.row(i) += dt * v.row(i);
+
+    // Account for ground collision
+    if (x(i, 1) < 0.0) {
+        x(i, 1) = 0.0;
+
+        // Bounce vertex back up at a fraction of its velocity            
+        if (v(i, 1) < 0.0) {
+            v(i, 1) *= -restitution;
+        }
     }
 }
 
@@ -122,8 +126,7 @@ void step(
     Eigen::MatrixXd& forces,
     std::vector<double>& J,
     std::vector<double>& energy,
-    std::vector<Eigen::Matrix3d>& P,
-    std::vector<bool>& fixed
+    std::vector<Eigen::Matrix3d>& P
 ) 
 {
     // Recompute forces for each substep, retaining them for visualization.
@@ -142,7 +145,7 @@ void step(
         addGravityForce(i, mass, forces);
 
         // Run Symplectic Euler
-        symplecticEuler(i, dt, x, X, v, forces, mass, fixed);
+        symplecticEuler(i, dt, x, X, v, forces, mass);
     }
 }
 
@@ -160,11 +163,6 @@ int main() {
     Eigen::MatrixXi F;
 
     igl::readMESH("../data/cube86.mesh", X, T, F);
-
-    // Shift mesh up by 3 units.
-    for (int i = 0; i < X.rows(); ++i) {
-        X(i, 1) += 3;
-    }
 
     /*
     Compute D_m^{-1} for each tetra (since these are in the material config, 
@@ -246,17 +244,11 @@ int main() {
 
     // Fix top of mesh to prevent falling through space
     double yMax = X.col(1).maxCoeff();
-    
-    std::vector<bool> fixed(X.rows());
-
-    for (int i = 0; i < X.rows(); ++i) {
-        if (std::abs(X(i, 1) - yMax) < eps) {
-            fixed[i] = true;
-        }
-    }
 
     // For now, spatial config is equal to material config
     Eigen::MatrixXd x = X;
+
+    x.col(1).array() += height;
 
     /*
     Create a NeoHookean material with Young's modulus 1000 Pa
@@ -301,8 +293,7 @@ int main() {
                 forces,
                 J,
                 energy,
-                P, 
-                fixed
+                P 
             );
         }
         mesh->updateVertexPositions(x);
