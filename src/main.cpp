@@ -11,14 +11,16 @@
 #include <igl/readMESH.h>
 #include "Material.hpp"
 
-const double pi = M_PI;
-const double g = 9.81;
-const double eps = 1e-6;
-const double beta = 1e-3;
-const double restitution = 0.5;
-const double youngsModulus = 500.0;
-const double poissonRatio = 0.3;
-const double height = 5.0;
+const double pi = M_PI;                 //  π
+const double g = 9.81;                  //  Gravitational constant
+const double eps = 1e-6;                //  Used for approximating the directional derivative of the elastic force
+const double beta = 1e-3;               //  Constant of proportionality for Rayleigh damping
+const double mu_static = 0.6;           //  Static coeff of friction for wood (https://en.wikipedia.org/wiki/Friction#Approximate_coefficients_of_friction)
+const double mu_kinetic = 0.4;          //  Kinetic coeff of friction for wood (https://en.wikipedia.org/wiki/Friction#Approximate_coefficients_of_friction)
+const double restitution = 0.01;        //  Restitution vector for normal velocity after ground contact (assuming horizontal plane)
+const double youngsModulus = 500.0;     //  Young's modulus of NeoHookean material
+const double poissonRatio = 0.3;        //  Poisson ratio of NeoHookean material
+const double height = 3.0;              //  Height from which object is dropped
 
 void addGravityForce(int i, Eigen::VectorXd& mass, Eigen::MatrixXd& forces) {
     Eigen::Vector3d gravity(0.0, mass(i) * -g, 0.0);
@@ -113,6 +115,75 @@ Eigen::Matrix3d computeDeformationGradient(
     return Ds_e * DmInv[e];;
 }
 
+void applyFriction(
+    int i,
+    double dt,
+    const Eigen::VectorXd& mass,
+    const Eigen::MatrixXd& x,
+    Eigen::MatrixXd& v,
+    Eigen::MatrixXd& forces
+)
+{
+    // Form tangential velocity vector and get its norm
+    Eigen::Vector3d vt(v(i, 0), 0.0, v(i, 2));
+    double vtNorm = vt.norm();
+    
+    /*
+    We only want to apply friction upon contact (i.e. the vertex must
+    be within eps of the ground)
+    */
+    if (std::abs(x(i, 1)) < eps) {
+        /*
+        Keeping with our assumption that the ground is level, the normal
+        component of velocity is just the y-component
+        */
+        double vnNorm = v(i, 1);
+        double JnNorm;
+
+        /*
+        If the normal component of velocity is pointing down and is sufficiently
+        large in magnitude, the object hasn't stopped bouncing; thus the normal
+        impulse we must apply to go from v to -e*v (where e is the restitution factor)
+        can be derived to be the first equation
+
+        Otherwise, the normal impulse is simply the integral of the normal force (which
+        is equal to a vector of opposite magnitude of the sum of net forces in the 
+        y-direction)
+        */
+        if (vnNorm < -eps) {
+            JnNorm = mass(i) * (1 + restitution) * (-vnNorm);
+        }
+        else {
+            JnNorm = std::max(0.0, -forces(i, 1)) * dt;
+        }
+        
+        /*
+        The impulse required to stop any tangential velocity (i.e. go from
+        vt -> 0)
+        */
+        Eigen::Vector3d Jstop = -mass(i) * vt;
+
+        /*
+        If the impulse required to stop any tangential motion is less than
+        the static friction impulse, we can safely set the tangential velocity to 0
+
+        Otherwise, we generate an impulse with the magnitude of the kinetic friction 
+        force in the direction of the tangent velocity. Since impulse is equivalently
+        characterized as the change in momentum, dividing by the vertex mass give the
+        resultant change in velocity. Adding this to the current velocity gives us our
+        new velocity
+        */
+        if (Jstop.norm() <= mu_static * JnNorm) {
+            v(i, 0) = 0.0;
+            v(i, 2) = 0.0;
+        }
+        else {
+            Eigen::Vector3d Jkin = -mu_kinetic * JnNorm * (vt / vtNorm);
+            v.row(i) += (Jkin / mass(i)).transpose();
+        }
+    }
+}
+
 void step(
     double dt,
     Eigen::MatrixXd& x,
@@ -164,6 +235,9 @@ void step(
 
         // Run Symplectic Euler
         symplecticEuler(i, dt, x, X, v, netForces, mass);
+
+        // Apply friction to reduce tangential speed of the object
+        applyFriction(i, dt, mass, x, v, netForces);
     }
 }
 
@@ -181,6 +255,9 @@ int main() {
     Eigen::MatrixXi F;
 
     igl::readMESH("../data/cube86.mesh", X, T, F);
+
+    // Scale reference config to have coordinates be in [-1, 1]
+    X /= std::abs(X.maxCoeff());
 
     /*
     Compute D_m^{-1} for each tetra (since these are in the material config, 
@@ -208,6 +285,8 @@ int main() {
     to solve for the acceleration, which is accomplished by a_i = M^{-1}f_i,
     where M is the mass matrix. For simplicity, we use the lumped mass matrix
     method, which is a block diagonal matrix (stored as a vector for efficiency)
+    where the ith block is given by m_iI, where I is the 3x3 identity and m_i
+    is the mass of the ith vertex
     */
     Eigen::VectorXd mass = Eigen::VectorXd::Zero(X.rows());
     double initial_density = 1.0;
@@ -291,7 +370,7 @@ int main() {
         glm::vec3(0.5f, 2.0f, 0.5f)
     );
 
-    constexpr double dt = 1e-5;
+    constexpr double dt = 1e-4;
     constexpr int substepsPerFrame = (1 / dt) / 60.0;
 
     // Run animation in polyscope
